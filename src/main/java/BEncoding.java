@@ -8,7 +8,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Created by wsgreen on 7/18/16.
+ * BEncoding.class
+ *
+ * Utility class to encode/decode .torrent files
+ *
+ * @author wsgreen
  */
 public class BEncoding {
   private static final Byte NUMBER_START = "i".getBytes()[0];
@@ -19,43 +23,55 @@ public class BEncoding {
 
   private static final String UTF8 = "UTF-8";
 
-  private static final int MAX_LONG_BYTE_ARRAY_SIZE = 8;
+  public static byte[] encode(Object data) {
+    if (data instanceof Map) {
+      return encodeMap(checkedCastMap(data));
+    } else if (data instanceof List) {
 
-  public static byte[] encode(Map<String, Object> data) {
-    List<Byte> byteList = new LinkedList<>();
-    for (String key : data.keySet()) {
-      byte[] b = key.getBytes();
-      for (int i = 0; i < b.length; i++) {
-        byteList.add(b[i]);
-      }
+    } else if (data instanceof Long) {
 
+    } else if (data instanceof byte[]) {
 
     }
 
-
-    return new byte[0];
+    return null;
   }
 
-  public static Map<String, Object> decode(byte[] val) {
-    if (Byte.compare(val[0], DICTIONARY_START) != 0 || Byte.compare(val[val.length - 1], END) != 0) { //God I wish this was C++ and I could just trim this array in O(1) space/time...
+  private static byte[] encodeMap(Map<String, Object> data) {
+    List<Byte> bytes = new LinkedList<>();
+    for (String key : data.keySet()) {
+      addBytes(bytes, encodeString(key));
+      addBytes(bytes, encode(data.get(key)));
+    }
+
+    return ByteUtil.toPrimitiveArray(bytes);
+  }
+
+  private static byte[] encodeString(String data) {
+    String encoded = String.format("%d:%s", data.length(), data);
+    return encoded.getBytes();
+  }
+
+  public static Map<String, Object> decode(byte[] data) {
+    if (Byte.compare(data[0], DICTIONARY_START) != 0 || Byte.compare(data[data.length - 1], END) != 0) { //God I wish this was C++ and I could just trim this array in O(1) space/time...
       throw new InvalidBEncodingFormatException();
     }
 
-    LinkedList<Byte> data = new LinkedList<>();
-    for (byte b : val) {
-      data.add(b);
+    LinkedList<Byte> bytes = new LinkedList<>();
+    for (byte b : bytes) {
+      bytes.add(b);
     }
 
-    return (Map<String, Object>) decodeObject(data);
+    return checkedCastMap(decodeObject(bytes));
   }
 
   private static Object decodeObject(LinkedList<Byte> data) {
     if (data.getFirst().compareTo(DICTIONARY_START) == 0) {
       return decodeMap(data);
-    } else if (data.getFirst().compareTo(NUMBER_START) == 0) {
-      return decodeNumber(data);
     } else if (data.getFirst().compareTo(LIST_START) == 0) {
       return decodeList(data);
+    } else if (data.getFirst().compareTo(NUMBER_START) == 0) {
+      return decodeNumber(data);
     } else {
       return decodeByteArray(data);
     }
@@ -112,13 +128,13 @@ public class BEncoding {
 
   private static byte[] decodeByteArray(LinkedList<Byte> data) {
     List<Byte> arrayLength = new ArrayList<>();
-    while (data.getFirst().compareTo(DELIM.byteValue()) != 0) {
+    while (data.getFirst().compareTo(DELIM) != 0) {
       arrayLength.add(data.getFirst());
       data.removeFirst();
     }
     data.removeFirst();
 
-    int len = -1;
+    int len;
     try {
       len = Integer.parseInt(new String(ByteUtil.toPrimitiveArray(arrayLength), UTF8)); // Yikes
     } catch (UnsupportedEncodingException e) {
@@ -134,12 +150,17 @@ public class BEncoding {
     return ByteUtil.toPrimitiveArray(byteArray);
   }
 
-  private static boolean isNumeric(byte s) {
+  private static Map<String, Object> checkedCastMap(Object o) {
+    if (o instanceof Map) {
+      return (Map<String, Object>) o;
+    }
 
-    if (s >= 0 && s <= 9) {
-      return true;
-    } else {
-      return false;
+    return null;
+  }
+
+  private static void addBytes(List<Byte> bytes, byte[] toAdd) {
+    for (int i = 0; i < toAdd.length; i++) {
+      bytes.add(toAdd[i]);
     }
   }
 
