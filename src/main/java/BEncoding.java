@@ -1,7 +1,10 @@
 import com.google.common.base.Throwables;
+import com.google.common.primitives.Longs;
 
 import java.io.UnsupportedEncodingException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -15,11 +18,11 @@ import java.util.Map;
  * @author wsgreen
  */
 public class BEncoding {
-  private static final Byte NUMBER_START = "i".getBytes()[0];
-  private static final Byte DICTIONARY_START = "d".getBytes()[0];
-  private static final Byte LIST_START = "l".getBytes()[0];
-  private static final Byte END = "e".getBytes()[0];
-  private static final Byte DELIM = ":".getBytes()[0];
+  private static final Byte NUMBER_START = 'i';
+  private static final Byte DICTIONARY_START = 'd';
+  private static final Byte LIST_START = 'l';
+  private static final Byte END = 'e';
+  private static final Byte DELIM = ':';
 
   private static final String UTF8 = "UTF-8";
 
@@ -27,11 +30,11 @@ public class BEncoding {
     if (data instanceof Map) {
       return encodeMap(checkedCastMap(data));
     } else if (data instanceof List) {
-
+      return encodeList(checkedCastList(data));
     } else if (data instanceof Long) {
-
+      return encodeNumber(checkedCastLong(data));
     } else if (data instanceof byte[]) {
-
+      return encodeByteArray(checkedCastByteArray(data));
     }
 
     return null;
@@ -39,12 +42,47 @@ public class BEncoding {
 
   private static byte[] encodeMap(Map<String, Object> data) {
     List<Byte> bytes = new LinkedList<>();
+    bytes.add(DICTIONARY_START);
     for (String key : data.keySet()) {
       addBytes(bytes, encodeString(key));
       addBytes(bytes, encode(data.get(key)));
     }
+    bytes.add(END);
 
     return ByteUtil.toPrimitiveArray(bytes);
+  }
+
+  private static byte[] encodeList(List<Object> data) {
+    List<Byte> bytes = new LinkedList<>();
+    bytes.add(LIST_START);
+    for (Object o : data) {
+      addBytes(bytes, encode(o));
+    }
+    bytes.add(END);
+    return ByteUtil.toPrimitiveArray(bytes);
+  }
+
+  private static byte[] encodeNumber(Long data) {
+    List<Byte> bytes = new LinkedList<>();
+    bytes.add(NUMBER_START);
+    addBytes(bytes, Longs.toByteArray(data));
+    bytes.add(END);
+    return ByteUtil.toPrimitiveArray(bytes);
+  }
+
+  private static byte[] encodeByteArray(byte[] data) {
+    byte[] length = ByteBuffer.allocate(4).putInt(data.length).array();
+    byte[] bytes = new byte[data.length + length.length + 1]; //size of length + size of ':' + size of data
+    int index = 0;
+    for (; index < length.length; index++) {
+      bytes[index] = length[index];
+    }
+    bytes[index++] = DELIM;
+    for (int i = 0; index < bytes.length && i < data.length; index++, i++) {
+      bytes[index] = data[i];
+    }
+
+    return bytes;
   }
 
   private static byte[] encodeString(String data) {
@@ -58,7 +96,7 @@ public class BEncoding {
     }
 
     LinkedList<Byte> bytes = new LinkedList<>();
-    for (byte b : bytes) {
+    for (byte b : data) {
       bytes.add(b);
     }
 
@@ -108,11 +146,14 @@ public class BEncoding {
     }
     data.removeFirst();
 
-    try {
-      return Long.parseLong(new String(ByteUtil.toPrimitiveArray(number), UTF8)); // Yikes
-    } catch (UnsupportedEncodingException e) {
-      throw Throwables.propagate(e);
+    // Back-fill 0's
+    byte[] formattedNumber = new byte[Long.BYTES];
+    Arrays.fill(formattedNumber, (byte) 0);
+    for (int i = number.size() - formattedNumber.length, j = 0; i < formattedNumber.length; i++, j++) {
+      formattedNumber[i] = number.get(j);
     }
+
+    return Longs.fromByteArray(formattedNumber);
   }
 
   private static List<Object> decodeList(LinkedList<Byte> data) {
@@ -154,7 +195,27 @@ public class BEncoding {
     if (o instanceof Map) {
       return (Map<String, Object>) o;
     }
+    return null;
+  }
 
+  private static List<Object> checkedCastList(Object o) {
+    if (o instanceof List) {
+      return (List<Object>) o;
+    }
+    return null;
+  }
+
+  private static Long checkedCastLong(Object o) {
+    if (o instanceof Long) {
+      return (Long) o;
+    }
+    return null;
+  }
+
+  private static byte[] checkedCastByteArray(Object o) {
+    if (o instanceof byte[]) {
+      return (byte[]) o;
+    }
     return null;
   }
 
@@ -165,10 +226,17 @@ public class BEncoding {
   }
 
   public static void main(String[] args) {
+    Map<String, Object> d = new HashMap<>();
+    d.put("announce", 32768l);
+    byte[] bytes = encode(d);
+    System.out.println(new String(bytes));
+
     byte[] b = "d8:announcei32768ee".getBytes();
-    Map<String, Object> decoded = decode(b);
+    Map<String, Object> decoded = decode(bytes);
     for (String s : decoded.keySet())
-      System.out.println(s);
+      System.out.println(s + ": " + decoded.get(s));
+
+
   }
 
 }

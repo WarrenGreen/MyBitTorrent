@@ -1,7 +1,12 @@
 import java.util.List;
 
 /**
- * Created by wsgreen on 7/20/16.
+ *
+ * ByteUtil.class
+ *
+ * Utility class for byte operations
+ *
+ * @author wsgreen
  */
 public class ByteUtil {
 
