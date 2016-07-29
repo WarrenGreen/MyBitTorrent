@@ -4,7 +4,6 @@ import com.google.common.primitives.Longs;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -26,7 +25,17 @@ public class BEncoding {
 
   private static final String UTF8 = "UTF-8";
 
+  /**
+   * Entry point for encoding process for objects to torrent file specs
+   *
+   * @param data
+   * @return
+   */
   public static byte[] encode(Object data) {
+    return encodeObject(data);
+  }
+
+  private static byte[] encodeObject(Object data) {
     if (data instanceof Map) {
       return encodeMap(checkedCastMap(data));
     } else if (data instanceof List) {
@@ -35,6 +44,8 @@ public class BEncoding {
       return encodeNumber(checkedCastLong(data));
     } else if (data instanceof byte[]) {
       return encodeByteArray(checkedCastByteArray(data));
+    } else if (data instanceof String) {
+      return encodeString(checkedCastString(data));
     }
 
     return null;
@@ -44,8 +55,8 @@ public class BEncoding {
     List<Byte> bytes = new LinkedList<>();
     bytes.add(DICTIONARY_START);
     for (String key : data.keySet()) {
-      addBytes(bytes, encodeString(key));
-      addBytes(bytes, encode(data.get(key)));
+      ByteUtil.addBytes(bytes, encodeString(key));
+      ByteUtil.addBytes(bytes, encodeObject(data.get(key)));
     }
     bytes.add(END);
 
@@ -56,7 +67,7 @@ public class BEncoding {
     List<Byte> bytes = new LinkedList<>();
     bytes.add(LIST_START);
     for (Object o : data) {
-      addBytes(bytes, encode(o));
+      ByteUtil.addBytes(bytes, encodeObject(o));
     }
     bytes.add(END);
     return ByteUtil.toPrimitiveArray(bytes);
@@ -65,7 +76,7 @@ public class BEncoding {
   private static byte[] encodeNumber(Long data) {
     List<Byte> bytes = new LinkedList<>();
     bytes.add(NUMBER_START);
-    addBytes(bytes, Longs.toByteArray(data));
+    ByteUtil.addBytes(bytes, Longs.toByteArray(data));
     bytes.add(END);
     return ByteUtil.toPrimitiveArray(bytes);
   }
@@ -90,6 +101,12 @@ public class BEncoding {
     return encoded.getBytes();
   }
 
+  /**
+   * Entry point for decoding torrent file data to objects
+   *
+   * @param data byte array in torrent spec
+   * @return
+   */
   public static Map<String, Object> decode(byte[] data) {
     if (Byte.compare(data[0], DICTIONARY_START) != 0 || Byte.compare(data[data.length - 1], END) != 0) { //God I wish this was C++ and I could just trim this array in O(1) space/time...
       throw new InvalidBEncodingFormatException();
@@ -146,14 +163,13 @@ public class BEncoding {
     }
     data.removeFirst();
 
-    // Back-fill 0's
-    byte[] formattedNumber = new byte[Long.BYTES];
-    Arrays.fill(formattedNumber, (byte) 0);
-    for (int i = number.size() - formattedNumber.length, j = 0; i < formattedNumber.length; i++, j++) {
-      formattedNumber[i] = number.get(j);
+    try {
+      return Long.parseLong(new String(ByteUtil.toPrimitiveArray(number), UTF8)); //Yikes - Would prefer to use Longs
+    } catch (UnsupportedEncodingException e) {
+      e.printStackTrace();
     }
 
-    return Longs.fromByteArray(formattedNumber);
+    return null;
   }
 
   private static List<Object> decodeList(LinkedList<Byte> data) {
@@ -219,24 +235,10 @@ public class BEncoding {
     return null;
   }
 
-  private static void addBytes(List<Byte> bytes, byte[] toAdd) {
-    for (int i = 0; i < toAdd.length; i++) {
-      bytes.add(toAdd[i]);
+  private static String checkedCastString(Object o) {
+    if (o instanceof String) {
+      return (String) o;
     }
+    return null;
   }
-
-  public static void main(String[] args) {
-    Map<String, Object> d = new HashMap<>();
-    d.put("announce", 32768l);
-    byte[] bytes = encode(d);
-    System.out.println(new String(bytes));
-
-    byte[] b = "d8:announcei32768ee".getBytes();
-    Map<String, Object> decoded = decode(bytes);
-    for (String s : decoded.keySet())
-      System.out.println(s + ": " + decoded.get(s));
-
-
-  }
-
 }
